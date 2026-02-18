@@ -16,6 +16,18 @@ app.config['UPLOAD_FOLDER'] = '/app/uploads'
 app.config['IMAGE_CACHE'] = '/data/image_cache'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+# Load HA add-on options before initializing OpenAI so the API key is available.
+# /data/options.json is written by HA Supervisor from the add-on Configuration tab.
+_options_path = '/data/options.json'
+if os.path.exists(_options_path):
+    try:
+        with open(_options_path) as _f:
+            _opts = json.load(_f)
+        if _opts.get('openai_api_key'):
+            os.environ['OPENAI_API_KEY'] = _opts['openai_api_key']
+    except Exception:
+        pass
+
 client = OpenAI()
 DB_PATH = '/data/inventory.db'
 
