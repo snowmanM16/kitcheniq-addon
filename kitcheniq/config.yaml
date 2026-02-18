@@ -1,0 +1,32 @@
+name: KitchenIQ
+description: Home kitchen inventory manager with AI-powered receipt scanning and smart reorder suggestions.
+version: "1.0.0"
+slug: kitcheniq
+url: https://github.com/YOUR_GITHUB_USERNAME/kitcheniq-addon
+
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+
+# Ingress lets HA proxy the app through its own HTTPS — works with Nabu Casa out of the box
+ingress: true
+ingress_port: 5000
+panel_icon: mdi:fridge-outline
+panel_title: KitchenIQ
+
+# User-configurable options (set in the add-on Configuration tab in HA)
+options:
+  openai_api_key: ""
+
+schema:
+  openai_api_key: str
+
+# Persistent storage: /data is mounted as a volume by HA Supervisor
+map:
+  - data:rw
+
+startup: application
+boot: auto
+init: false
