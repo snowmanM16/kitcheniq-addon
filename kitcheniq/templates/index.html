@@ -857,20 +857,23 @@ async function sendToHA(){
     const d=await r.json();
     if(r.ok&&d.success){
       toast(`✅ Sent ${d.pushed} item${d.pushed!==1?'s':''} to HA Shopping List`,'ok');
-    } else {
-      const msg=d.error||'Failed to push to HA';
-      // Graceful fallback: if not running as HA add-on, open print view instead
-      if(d.error&&d.error.includes('SUPERVISOR_TOKEN')){
-        fetch('/api/shopping-list').then(r=>r.json()).then(d=>{
-          const w=window.open('','_blank');
-          const rows=d.items.map(i=>`<tr><td>${EMOJI[i.category]||'📦'} ${i.name}</td><td>${i.category}</td><td>${i.store||'—'}</td><td>$${(i.price||0).toFixed(2)}</td></tr>`).join('');
-          w.document.write(`<html><head><title>Shopping List</title><style>body{font-family:sans-serif;padding:2rem}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;text-align:left;border-bottom:1px solid #eee}th{border-bottom:2px solid #000}.tot{font-size:1.1rem;font-weight:bold;margin-top:1rem}</style></head><body><h1>Shopping List</h1><table><thead><tr><th>Item</th><th>Category</th><th>Store</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table><p class="tot">Estimated Total: $${d.total.toFixed(2)}</p></body></html>`);
-          w.print();
-        });
-        toast('Opened print view (standalone mode)');
+    } else if(d.error&&d.error.includes('SUPERVISOR_TOKEN')){
+      // Not running as HA add-on — share or print the list instead
+      const sl=await(await fetch('/api/shopping-list')).json();
+      const text='Shopping List\n\n'+sl.items.map(i=>`• ${i.name}${i.store?' ('+i.store+')':''}`).join('\n')+`\n\nEst. Total: $${sl.total.toFixed(2)}`;
+      if(navigator.share){
+        navigator.share({title:'Shopping List',text}).catch(()=>{});
       } else {
-        toast(msg,'err');
+        // Desktop fallback: open print window
+        const w=window.open('','_blank');
+        if(w){
+          const rows=sl.items.map(i=>`<tr><td>${EMOJI[i.category]||'📦'} ${i.name}</td><td>${i.category}</td><td>${i.store||'—'}</td><td>$${(i.price||0).toFixed(2)}</td></tr>`).join('');
+          w.document.write(`<html><head><title>Shopping List</title><style>body{font-family:sans-serif;padding:2rem}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;text-align:left;border-bottom:1px solid #eee}th{border-bottom:2px solid #000}.tot{font-size:1.1rem;font-weight:bold;margin-top:1rem}</style></head><body><h1>Shopping List</h1><table><thead><tr><th>Item</th><th>Category</th><th>Store</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table><p class="tot">Estimated Total: $${sl.total.toFixed(2)}</p></body></html>`);
+          w.print();
+        }
       }
+    } else {
+      toast(d.error||'Failed to push to HA','err');
     }
   }catch(e){
     toast('Connection error','err');
