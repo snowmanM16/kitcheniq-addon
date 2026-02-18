@@ -616,21 +616,29 @@ def push_to_ha_shopping_list():
         'Authorization': f'Bearer {supervisor_token}',
         'Content-Type': 'application/json'
     }
+    # Determine the correct HA API base URL.
+    # http://supervisor/core/api only works with SUPERVISOR_TOKEN (Supervisor proxy).
+    # A Long-Lived Access Token must call HA core directly on port 8123.
+    using_llat = bool(os.environ.get('HA_TOKEN'))
+    ha_base = 'http://homeassistant:8123/api' if using_llat else 'http://supervisor/core/api'
+
     pushed = 0
     errors = 0
     for item in items:
         try:
             resp = requests.post(
-                'http://supervisor/core/api/shopping_list/item',
+                f'{ha_base}/shopping_list/item',
                 json={'name': item['name']},
                 headers=headers,
                 timeout=5
             )
+            print(f'[HA push] {item["name"]}: {resp.status_code} {resp.text[:120]}', flush=True)
             if resp.status_code in (200, 201):
                 pushed += 1
             else:
                 errors += 1
-        except Exception:
+        except Exception as e:
+            print(f'[HA push] {item["name"]}: exception {e}', flush=True)
             errors += 1
     return jsonify({'success': True, 'pushed': pushed, 'errors': errors, 'total': len(items)})
 

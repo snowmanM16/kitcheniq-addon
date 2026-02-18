@@ -1,6 +1,6 @@
 name: KitchenIQ
 description: Home kitchen inventory manager with AI-powered receipt scanning and smart reorder suggestions.
-version: "1.2.3"
+version: "1.2.4"
 slug: kitcheniq
 url: https://github.com/snowmanM16/kitcheniq-addon
 
