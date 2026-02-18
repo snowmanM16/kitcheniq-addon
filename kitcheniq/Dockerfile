@@ -1,18 +1,20 @@
-# ARG BUILD_FROM allows HA Supervisor to inject the correct base image per architecture.
-# Falls back to python:3.11-slim for standalone Docker use.
-ARG BUILD_FROM=python:3.11-slim
+# HA Supervisor injects the correct base image (Alpine-based) per architecture via BUILD_FROM
+ARG BUILD_FROM
 FROM $BUILD_FROM
 
 WORKDIR /app
 
+# HA base images are Alpine — install Python 3, pip, and bash
+RUN apk add --no-cache python3 py3-pip bash
+
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# /data is mounted by HA Supervisor (config.yaml map: data:rw)
-# uploads/ is transient scratch space inside the container
-RUN mkdir -p /data /data/image_cache /app/uploads
+RUN mkdir -p /data /data/image_cache /app/uploads \
+    && sed -i 's/\r//' run.sh \
+    && chmod +x run.sh
 
 ENV PYTHONUNBUFFERED=1
 

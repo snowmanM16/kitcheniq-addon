@@ -1,6 +1,8 @@
 services:
   kitcheniq:
-    build: ./kitcheniq
+    build:
+      context: ./kitcheniq
+      dockerfile: Dockerfile.standalone
     container_name: kitcheniq
     ports:
       - "5000:5000"
