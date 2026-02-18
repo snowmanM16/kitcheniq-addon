@@ -95,9 +95,24 @@ def init_db():
             event_type TEXT NOT NULL,
             event_date TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS price_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL,
+            store TEXT NOT NULL,
+            price REAL NOT NULL,
+            date_recorded TEXT NOT NULL
+        );
     ''')
     conn.commit()
     conn.close()
+
+def log_price(conn, item_name, store, price):
+    """Record price paid per store for price comparison tracking."""
+    if store and store not in ('', 'Unknown') and price and price > 0:
+        conn.execute(
+            'INSERT INTO price_history (item_name, store, price, date_recorded) VALUES (?,?,?,?)',
+            [item_name, store, price, datetime.now().isoformat()]
+        )
 
 def log_history_event(conn, item_name, event_type):
     """Record a restocked/needed event for consumption cycle tracking."""
@@ -230,7 +245,8 @@ def fetch_product_image(item_name, description='', store=''):
 
     return local_path, image_url
 
-def analyze_receipt_image(image_data, filename):
+def analyze_receipt_image(image_data, filename, store=''):
+    store_hint = f' This receipt is from {store}. Set "store" to "{store}" for every item.' if store and store != 'Unknown' else ' Guess the store name if visible, otherwise use "Unknown".'
     prompt = (
         "Analyze this receipt/shopping screenshot carefully. Extract ALL items purchased.\n\n"
         "For each item return a JSON array with objects containing:\n"
@@ -247,7 +263,7 @@ def analyze_receipt_image(image_data, filename):
         "  - Snacks: chips, cookies, candy, nuts, crackers\n"
         "  - Beverages: soda, water, coffee, tea, sports drinks, alcohol\n"
         "  - Other: anything else\n"
-        "- store: guess the store name if visible (Walmart, Kroger, Sam's Club, or Unknown)\n\n"
+        f"- store: {store_hint}\n\n"
         "Return ONLY a valid JSON array, no markdown, no explanation. Example:\n"
         '[{"name":"Whole Milk","description":"1 gallon whole milk","price":3.99,"category":"Fridge","store":"Kroger"}]'
     )
@@ -306,6 +322,7 @@ def add_item():
          data.get('price', 0), data.get('store',''), image_url, local_path, now, now]
     )
     log_history_event(conn, data.get('name',''), 'restocked')
+    log_price(conn, data.get('name',''), data.get('store',''), data.get('price', 0))
     conn.commit()
     conn.close()
     return jsonify({'id': cursor.lastrowid, 'success': True})
@@ -325,6 +342,11 @@ def update_item(item_id):
     values.append(item_id)
     conn.execute(f'UPDATE items SET {", ".join(fields)} WHERE id = ?', values)
     conn.commit()
+
+    if 'price' in data or 'store' in data:
+        item = dict(conn.execute('SELECT * FROM items WHERE id = ?', [item_id]).fetchone())
+        log_price(conn, item['name'], item.get('store',''), item.get('price', 0))
+        conn.commit()
 
     if data.get('status') == 'needed':
         item = dict(conn.execute('SELECT * FROM items WHERE id = ?', [item_id]).fetchone())
@@ -488,6 +510,32 @@ def get_suggestions():
     suggestions.sort(key=lambda x: x['days_until_needed'])
     return jsonify(suggestions)
 
+@app.route('/api/items/<int:item_id>/price-history', methods=['GET'])
+def get_price_history(item_id):
+    conn = get_db()
+    item = conn.execute('SELECT name FROM items WHERE id = ?', [item_id]).fetchone()
+    if not item:
+        conn.close()
+        return jsonify([])
+    # Most recent price per store, sorted cheapest first
+    rows = conn.execute('''
+        SELECT ph.store, ph.price, ph.date_recorded
+        FROM price_history ph
+        INNER JOIN (
+            SELECT store, MAX(date_recorded) as max_date
+            FROM price_history
+            WHERE item_name = ? COLLATE NOCASE
+            GROUP BY store
+        ) latest ON ph.store = latest.store AND ph.date_recorded = latest.max_date
+        WHERE ph.item_name = ? COLLATE NOCASE
+        ORDER BY ph.price ASC
+    ''', [item['name'], item['name']]).fetchall()
+    conn.close()
+    result = [dict(r) for r in rows]
+    if result:
+        result[0]['cheapest'] = True
+    return jsonify(result)
+
 @app.route('/api/upload-receipt', methods=['POST'])
 def upload_receipt():
     if 'file' not in request.files:
@@ -498,10 +546,11 @@ def upload_receipt():
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
+    store = request.form.get('store', '')
     with open(filepath, 'rb') as f:
         image_data = base64.standard_b64encode(f.read()).decode('utf-8')
     try:
-        items = analyze_receipt_image(image_data, filename)
+        items = analyze_receipt_image(image_data, filename, store)
         # Fetch all images before opening the main DB connection.
         # fetch_product_image opens its own connection to write to image_cache,
         # which causes "database is locked" if the main connection is already open.
@@ -522,14 +571,16 @@ def upload_receipt():
                 )
                 conn.execute('DELETE FROM shopping_list WHERE item_id = ?', [existing['id']])
                 log_history_event(conn, item['name'], 'restocked')
+                log_price(conn, item['name'], item.get('store', store), item.get('price', 0))
                 added.append({'id': existing['id'], 'name': item['name'], 'action': 'updated'})
             else:
                 cursor = conn.execute(
                     'INSERT INTO items (name, description, category, price, store, status, image_url, image_local, date_added, date_modified) VALUES (?,?,?,?,?,"have",?,?,?,?)',
                     [item.get('name','Unknown'), item.get('description',''), item.get('category','Pantry'),
-                     item.get('price', 0), item.get('store','Unknown'), image_url, local_path, now, now]
+                     item.get('price', 0), item.get('store', store) or store, image_url, local_path, now, now]
                 )
                 log_history_event(conn, item.get('name','Unknown'), 'restocked')
+                log_price(conn, item.get('name','Unknown'), item.get('store', store) or store, item.get('price', 0))
                 added.append({'id': cursor.lastrowid, 'name': item['name'], 'action': 'added'})
         conn.commit()
         conn.close()

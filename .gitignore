@@ -1,0 +1,15 @@
+# Environment variables — never commit API keys
+.env
+
+# Runtime data — stays local
+data/
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Docker
+*.log

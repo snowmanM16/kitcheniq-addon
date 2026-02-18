@@ -208,6 +208,21 @@ select.form-input option{background:var(--surface2);}
 ::-webkit-scrollbar{width:3px;height:3px;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 
+/* ── STORE PILLS ── */
+.store-select-label{font-size:.75rem;color:var(--muted);margin-bottom:.4rem;display:block;}
+.store-pills{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:1rem;}
+.store-pill{padding:.28rem .65rem;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-size:.75rem;cursor:pointer;transition:all .15s;}
+.store-pill:hover{border-color:var(--accent);color:var(--accent);}
+.store-pill.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:600;}
+/* ── PRICE HISTORY ── */
+.price-hist{margin:.9rem 0;padding:.7rem .85rem;background:var(--surface2);border-radius:10px;}
+.price-hist-title{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:.45rem;}
+.price-row{display:flex;justify-content:space-between;align-items:center;padding:.22rem 0;font-size:.82rem;border-bottom:1px solid var(--border);}
+.price-row:last-child{border-bottom:none;}
+.price-row-store{color:var(--text);}
+.price-row-price{font-weight:600;color:var(--text);}
+.price-row.cheapest .price-row-price{color:var(--accent2);}
+.price-row.cheapest .price-row-store::after{content:' ✓';font-size:.7rem;color:var(--accent2);}
 /* ── SUGGESTIONS ── */
 .sug-list{display:flex;flex-direction:column;gap:.6rem;}
 .sug-section-label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:.5rem 0 .25rem;margin-top:.5rem;}
@@ -376,6 +391,7 @@ select.form-input option{background:var(--surface2);}
         <div class="meta-box"><div class="meta-label">Status</div><div class="meta-value" id="dm-status">—</div></div>
       </div>
       <p style="font-size:.82rem;color:var(--muted);line-height:1.6;margin-bottom:1.25rem" id="dm-desc"></p>
+      <div id="dm-price-history"></div>
       <div class="modal-actions" id="dm-actions"></div>
     </div>
   </div>
@@ -438,7 +454,17 @@ select.form-input option{background:var(--surface2);}
       <button class="modal-close" onclick="closeModal('upload-modal')">×</button>
     </div>
     <div class="modal-body">
-      <p style="font-size:.83rem;color:var(--muted);margin-bottom:1rem">Upload screenshots from Kroger, Walmart, or Sam's Club. AI extracts every item automatically.</p>
+      <span class="store-select-label">Which store is this receipt from?</span>
+      <div class="store-pills" id="store-pills">
+        <button class="store-pill active" data-store="" onclick="pickStore(this)">Unknown</button>
+        <button class="store-pill" data-store="Walmart" onclick="pickStore(this)">Walmart</button>
+        <button class="store-pill" data-store="Sam's Club" onclick="pickStore(this)">Sam's Club</button>
+        <button class="store-pill" data-store="Kroger" onclick="pickStore(this)">Kroger</button>
+        <button class="store-pill" data-store="Dollar General" onclick="pickStore(this)">Dollar General</button>
+        <button class="store-pill" data-store="Target" onclick="pickStore(this)">Target</button>
+        <button class="store-pill" data-store="Costco" onclick="pickStore(this)">Costco</button>
+        <button class="store-pill" data-store="Aldi" onclick="pickStore(this)">Aldi</button>
+      </div>
       <div class="upload-zone" id="upzone" onclick="document.getElementById('ufile').click()">
         <input type="file" id="ufile" accept="image/*" multiple onchange="onFiles(this.files)">
         <div class="upload-icon">📋</div>
@@ -471,7 +497,7 @@ select.form-input option{background:var(--surface2);}
 
 <script>
 const EMOJI = {Fridge:'🧊',Freezer:'❄️',Pantry:'🥫',Bathroom:'🧴',Laundry:'🧺',Cleaning:'🧹',Snacks:'🍿',Beverages:'🥤',Other:'📦'};
-let items=[], curFilter='all', curSearch='', selFiles=[], curId=null, panelOpen=false;
+let items=[], curFilter='all', curSearch='', selFiles=[], curId=null, panelOpen=false, selStore='';
 
 // ── HA INGRESS SUPPORT ──
 // BASE is the ingress path prefix (e.g. /api/hassio_ingress/TOKEN).
@@ -687,7 +713,7 @@ function togglePanel(){
 }
 
 // ── DETAIL MODAL ──
-function openDetail(id){
+async function openDetail(id){
   curId=id;
   const i=items.find(x=>x.id===id);
   if(!i)return;
@@ -715,6 +741,23 @@ function openDetail(id){
   acts.innerHTML= i.status==='have'
     ?`<button class="btn btn-danger btn-sm" onclick="markNeeded(${id})">🛒 Mark Needed</button><button class="btn btn-ghost btn-sm" onclick="openEdit(${id})">✏️ Edit</button><button class="btn btn-ghost btn-sm" onclick="delItem(${id})">🗑 Delete</button>`
     :`<button class="btn btn-teal btn-sm" onclick="markHave(${id})">✅ Have It</button><button class="btn btn-ghost btn-sm" onclick="openEdit(${id})">✏️ Edit</button><button class="btn btn-ghost btn-sm" onclick="delItem(${id})">🗑 Delete</button>`;
+  // Load price history
+  const ph=document.getElementById('dm-price-history');
+  ph.innerHTML='';
+  try{
+    const rows=await(await fetch(`/api/items/${id}/price-history`)).json();
+    if(rows.length>1){
+      ph.innerHTML=`<div class="price-hist"><div class="price-hist-title">💰 Price Comparison</div>`+
+        rows.map(r=>`<div class="price-row${r.cheapest?' cheapest':''}">
+          <span class="price-row-store">${esc(r.store)}</span>
+          <span class="price-row-price">$${parseFloat(r.price).toFixed(2)}</span>
+        </div>`).join('')+`</div>`;
+    } else if(rows.length===1){
+      ph.innerHTML=`<div class="price-hist"><div class="price-hist-title">💰 Price History</div>
+        <div class="price-row cheapest"><span class="price-row-store">${esc(rows[0].store)}</span>
+        <span class="price-row-price">$${parseFloat(rows[0].price).toFixed(2)}</span></div></div>`;
+    }
+  }catch{}
   openModal('detail-modal');
 }
 
@@ -819,11 +862,19 @@ function printList(){
 
 // ── UPLOAD ──
 function openUpload(){
-  selFiles=[];document.getElementById('upreviews').innerHTML='';
+  selFiles=[];selStore='';
+  document.getElementById('upreviews').innerHTML='';
   document.getElementById('up-btn').style.display='none';
   document.getElementById('upstatus').textContent='';
   document.getElementById('upbar').style.display='none';
+  // Reset store pills to Unknown
+  document.querySelectorAll('.store-pill').forEach(p=>p.classList.toggle('active',p.dataset.store===''));
   openModal('upload-modal');
+}
+function pickStore(el){
+  document.querySelectorAll('.store-pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  selStore=el.dataset.store;
 }
 function onFiles(files){
   selFiles=Array.from(files);
@@ -845,7 +896,7 @@ async function processUploads(){
   for(let i=0;i<selFiles.length;i++){
     document.getElementById('upfill').style.width=((i/selFiles.length)*100)+'%';
     document.getElementById('upstatus').textContent=`Processing ${i+1} of ${selFiles.length}…`;
-    const fd=new FormData();fd.append('file',selFiles[i]);
+    const fd=new FormData();fd.append('file',selFiles[i]);if(selStore)fd.append('store',selStore);
     try{
       const r=await fetch('/api/upload-receipt',{method:'POST',body:fd});
       const d=await r.json();
