@@ -632,13 +632,11 @@ def push_to_ha_shopping_list():
                 headers=headers,
                 timeout=5
             )
-            print(f'[HA push] {item["name"]}: {resp.status_code} {resp.text[:120]}', flush=True)
             if resp.status_code in (200, 201):
                 pushed += 1
             else:
                 errors += 1
-        except Exception as e:
-            print(f'[HA push] {item["name"]}: exception {e}', flush=True)
+        except Exception:
             errors += 1
     return jsonify({'success': True, 'pushed': pushed, 'errors': errors, 'total': len(items)})
 
