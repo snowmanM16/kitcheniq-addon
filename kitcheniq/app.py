@@ -599,7 +599,10 @@ def uploaded_file(filename):
 
 @app.route('/api/ha/push-shopping-list', methods=['POST'])
 def push_to_ha_shopping_list():
-    supervisor_token = os.environ.get('SUPERVISOR_TOKEN')
+    # HA injects SUPERVISOR_TOKEN (current) or HASSIO_TOKEN (legacy)
+    supervisor_token = os.environ.get('SUPERVISOR_TOKEN') or os.environ.get('HASSIO_TOKEN')
+    print(f'[HA push] SUPERVISOR_TOKEN present: {bool(os.environ.get("SUPERVISOR_TOKEN"))}', flush=True)
+    print(f'[HA push] HASSIO_TOKEN present: {bool(os.environ.get("HASSIO_TOKEN"))}', flush=True)
     if not supervisor_token:
         return jsonify({'error': 'Not running as HA add-on (no SUPERVISOR_TOKEN)'}), 400
     conn = get_db()
