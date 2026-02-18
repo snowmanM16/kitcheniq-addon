@@ -25,6 +25,8 @@ if os.path.exists(_options_path):
             _opts = json.load(_f)
         if _opts.get('openai_api_key'):
             os.environ['OPENAI_API_KEY'] = _opts['openai_api_key']
+        if _opts.get('ha_token'):
+            os.environ['HA_TOKEN'] = _opts['ha_token']
     except Exception:
         pass
 
@@ -599,12 +601,14 @@ def uploaded_file(filename):
 
 @app.route('/api/ha/push-shopping-list', methods=['POST'])
 def push_to_ha_shopping_list():
-    # HA injects SUPERVISOR_TOKEN (current) or HASSIO_TOKEN (legacy)
-    supervisor_token = os.environ.get('SUPERVISOR_TOKEN') or os.environ.get('HASSIO_TOKEN')
-    print(f'[HA push] SUPERVISOR_TOKEN present: {bool(os.environ.get("SUPERVISOR_TOKEN"))}', flush=True)
-    print(f'[HA push] HASSIO_TOKEN present: {bool(os.environ.get("HASSIO_TOKEN"))}', flush=True)
+    # Prefer user-configured LLAT (most reliable), fall back to Supervisor-injected tokens
+    supervisor_token = (
+        os.environ.get('HA_TOKEN') or
+        os.environ.get('SUPERVISOR_TOKEN') or
+        os.environ.get('HASSIO_TOKEN')
+    )
     if not supervisor_token:
-        return jsonify({'error': 'Not running as HA add-on (no SUPERVISOR_TOKEN)'}), 400
+        return jsonify({'error': 'No HA token — add a Long-Lived Access Token in the add-on Configuration tab'}), 400
     conn = get_db()
     items = [dict(r) for r in conn.execute('SELECT * FROM shopping_list ORDER BY category, name').fetchall()]
     conn.close()
@@ -639,6 +643,8 @@ def load_ha_options():
                 opts = json.load(f)
             if opts.get('openai_api_key'):
                 os.environ['OPENAI_API_KEY'] = opts['openai_api_key']
+            if opts.get('ha_token'):
+                os.environ['HA_TOKEN'] = opts['ha_token']
         except Exception:
             pass
 
