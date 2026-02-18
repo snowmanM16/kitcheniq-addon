@@ -632,7 +632,7 @@ def push_to_ha_shopping_list():
                 errors += 1
         except Exception:
             errors += 1
-    return jsonify({'success': True, 'pushed': pushed, 'errors': errors})
+    return jsonify({'success': True, 'pushed': pushed, 'errors': errors, 'total': len(items)})
 
 def load_ha_options():
     """If running as an HA add-on, /data/options.json holds user-configured values."""

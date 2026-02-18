@@ -856,7 +856,15 @@ async function sendToHA(){
     const r=await fetch('/api/ha/push-shopping-list',{method:'POST'});
     const d=await r.json();
     if(r.ok&&d.success){
-      toast(`✅ Sent ${d.pushed} item${d.pushed!==1?'s':''} to HA Shopping List`,'ok');
+      if(d.total===0){
+        toast('Shopping list is empty — mark items as Needed first');
+      } else if(d.errors>0&&d.pushed===0){
+        toast(`HA API error — ${d.errors} item${d.errors!==1?'s':''} failed to push`,'err');
+      } else if(d.errors>0){
+        toast(`Sent ${d.pushed} of ${d.total} items (${d.errors} failed)`,'ok');
+      } else {
+        toast(`✅ Sent ${d.pushed} item${d.pushed!==1?'s':''} to HA Shopping List`,'ok');
+      }
     } else if(d.error&&d.error.includes('Long-Lived')){
       toast('Add a Long-Lived Access Token in the add-on Configuration tab','err');
     } else {
