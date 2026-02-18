@@ -597,6 +597,36 @@ def cached_image(filename):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+@app.route('/api/ha/push-shopping-list', methods=['POST'])
+def push_to_ha_shopping_list():
+    supervisor_token = os.environ.get('SUPERVISOR_TOKEN')
+    if not supervisor_token:
+        return jsonify({'error': 'Not running as HA add-on (no SUPERVISOR_TOKEN)'}), 400
+    conn = get_db()
+    items = [dict(r) for r in conn.execute('SELECT * FROM shopping_list ORDER BY category, name').fetchall()]
+    conn.close()
+    headers = {
+        'Authorization': f'Bearer {supervisor_token}',
+        'Content-Type': 'application/json'
+    }
+    pushed = 0
+    errors = 0
+    for item in items:
+        try:
+            resp = requests.post(
+                'http://supervisor/core/api/shopping_list/item',
+                json={'name': item['name']},
+                headers=headers,
+                timeout=5
+            )
+            if resp.status_code in (200, 201):
+                pushed += 1
+            else:
+                errors += 1
+        except Exception:
+            errors += 1
+    return jsonify({'success': True, 'pushed': pushed, 'errors': errors})
+
 def load_ha_options():
     """If running as an HA add-on, /data/options.json holds user-configured values."""
     options_path = '/data/options.json'

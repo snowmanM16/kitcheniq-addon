@@ -343,7 +343,7 @@ select.form-input option{background:var(--surface2);}
         <span class="total-label">Estimated Total</span>
         <span class="total-amount" id="panel-total">$0.00</span>
       </div>
-      <button class="btn btn-teal" style="width:100%;justify-content:center" onclick="printList()">🖨 Print List</button>
+      <button class="btn btn-teal" style="width:100%;justify-content:center" onclick="sendToHA()">🏠 Send to HA List</button>
     </div>
   </aside>
 </div>
@@ -488,7 +488,7 @@ select.form-input option{background:var(--surface2);}
     <div class="modal-body" id="shop-modal-body" style="padding-bottom:.5rem"></div>
     <div style="padding:1rem 1.25rem;border-top:1px solid var(--border)">
       <div class="total-row"><span class="total-label">Estimated Total</span><span class="total-amount" id="shop-modal-total">$0.00</span></div>
-      <button class="btn btn-teal" style="width:100%;justify-content:center" onclick="printList()">🖨 Print List</button>
+      <button class="btn btn-teal" style="width:100%;justify-content:center" onclick="sendToHA()">🏠 Send to HA List</button>
     </div>
   </div>
 </div>
@@ -851,13 +851,30 @@ async function buyItem(id){
   toast('Marked as purchased ✓','ok');
 }
 
-function printList(){
-  fetch('/api/shopping-list').then(r=>r.json()).then(d=>{
-    const w=window.open('','_blank');
-    const rows=d.items.map(i=>`<tr><td>${EMOJI[i.category]||'📦'} ${i.name}</td><td>${i.category}</td><td>${i.store||'—'}</td><td>$${(i.price||0).toFixed(2)}</td></tr>`).join('');
-    w.document.write(`<html><head><title>Shopping List</title><style>body{font-family:sans-serif;padding:2rem}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;text-align:left;border-bottom:1px solid #eee}th{border-bottom:2px solid #000}.tot{font-size:1.1rem;font-weight:bold;margin-top:1rem}</style></head><body><h1>Shopping List</h1><table><thead><tr><th>Item</th><th>Category</th><th>Store</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table><p class="tot">Estimated Total: $${d.total.toFixed(2)}</p></body></html>`);
-    w.print();
-  });
+async function sendToHA(){
+  try{
+    const r=await fetch('/api/ha/push-shopping-list',{method:'POST'});
+    const d=await r.json();
+    if(r.ok&&d.success){
+      toast(`✅ Sent ${d.pushed} item${d.pushed!==1?'s':''} to HA Shopping List`,'ok');
+    } else {
+      const msg=d.error||'Failed to push to HA';
+      // Graceful fallback: if not running as HA add-on, open print view instead
+      if(d.error&&d.error.includes('SUPERVISOR_TOKEN')){
+        fetch('/api/shopping-list').then(r=>r.json()).then(d=>{
+          const w=window.open('','_blank');
+          const rows=d.items.map(i=>`<tr><td>${EMOJI[i.category]||'📦'} ${i.name}</td><td>${i.category}</td><td>${i.store||'—'}</td><td>$${(i.price||0).toFixed(2)}</td></tr>`).join('');
+          w.document.write(`<html><head><title>Shopping List</title><style>body{font-family:sans-serif;padding:2rem}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;text-align:left;border-bottom:1px solid #eee}th{border-bottom:2px solid #000}.tot{font-size:1.1rem;font-weight:bold;margin-top:1rem}</style></head><body><h1>Shopping List</h1><table><thead><tr><th>Item</th><th>Category</th><th>Store</th><th>Price</th></tr></thead><tbody>${rows}</tbody></table><p class="tot">Estimated Total: $${d.total.toFixed(2)}</p></body></html>`);
+          w.print();
+        });
+        toast('Opened print view (standalone mode)');
+      } else {
+        toast(msg,'err');
+      }
+    }
+  }catch(e){
+    toast('Connection error','err');
+  }
 }
 
 // ── UPLOAD ──
